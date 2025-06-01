@@ -11,7 +11,7 @@ This is a FastAPI-based backend service that provides a streaming chat interface
 ## Setup
 
 1. Create a virtual environment (recommended):
-```bash
+```bashY
 python -m venv venv
 source venv/bin/activate  # On Windows, use: venv\Scripts\activate
 ```
