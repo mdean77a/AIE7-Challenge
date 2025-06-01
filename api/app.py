@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 import os
 from typing import Optional
+import asyncio
 
 # Initialize FastAPI application with a title
 app = FastAPI(title="OpenAI Chat API")
@@ -52,10 +53,21 @@ async def chat(request: ChatRequest):
             # Yield each chunk of the response as it becomes available
             for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+                    # Format as SSE with proper newlines
+                    yield f"data: {chunk.choices[0].delta.content}\n\n"
+                    # Flush the response to ensure immediate delivery
+                    await asyncio.sleep(0)
 
         # Return a streaming response to the client
-        return StreamingResponse(generate(), media_type="text/plain")
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
     
     except Exception as e:
         # Handle any errors that occur during processing
