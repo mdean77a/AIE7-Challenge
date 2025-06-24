@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-secondary text-text-primary;
+  }
+}
+
+@layer components {
+  .message-content {
+    @apply leading-relaxed;
+  }
+  
+  .streaming-cursor::after {
+    content: '|';
+    @apply animate-pulse text-primary;
+  }
+  
+  .chat-container {
+    height: calc(100vh - 200px);
+  }
+  
+  .input-container {
+    @apply sticky bottom-0 bg-white border-t border-border-light p-4;
+  }
+} 
