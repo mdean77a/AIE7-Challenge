@@ -54,8 +54,16 @@ async def chat(request: ChatRequest):
                 if chunk.choices[0].delta.content is not None:
                     yield chunk.choices[0].delta.content
 
-        # Return a streaming response to the client
-        return StreamingResponse(generate(), media_type="text/plain")
+        # Return a streaming response to the client with proper headers
+        return StreamingResponse(
+            generate(), 
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering if present
+            }
+        )
     
     except Exception as e:
         # Handle any errors that occur during processing

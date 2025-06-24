@@ -55,7 +55,7 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
     try {
       abortControllerRef.current = new AbortController()
       
-      const response = await fetch('/api/chat', {
+      const response = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         throw new Error('No reader available')
       }
 
-      let accumulatedContent = ''
+
 
       while (true) {
         const { done, value } = await reader.read()
@@ -88,16 +88,18 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
-        accumulatedContent += chunk
-
-        // Update the streaming message
-        setMessages(prev => 
-          prev.map((msg, index) => 
-            index === prev.length - 1 
-              ? { ...msg, content: accumulatedContent }
-              : msg
+        
+        // Only update if we have actual content
+        if (chunk.length > 0) {
+          // Update the streaming message by appending each token/chunk
+          setMessages(prev => 
+            prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, content: msg.content + chunk }
+                : msg
+            )
           )
-        )
+        }
       }
 
       // Mark streaming as complete
