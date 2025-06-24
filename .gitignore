@@ -9,7 +9,8 @@ uv.lock
 sessions/.current-session 
 .current-session
 
-
+*.bin 
+*/node_modules/
 
 
 
