@@ -22,6 +22,7 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   const [showSettings, setShowSettings] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -30,6 +31,11 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Focus input when component mounts (when user enters chat interface)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isStreaming) return
@@ -103,6 +109,11 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         )
       )
 
+      // Return focus to input after streaming completes
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // Stream was cancelled
@@ -126,6 +137,11 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
     } finally {
       setIsStreaming(false)
       abortControllerRef.current = null
+      
+      // Always return focus to input when streaming ends
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
     }
   }
 
@@ -230,16 +246,17 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         <div className="max-w-4xl mx-auto">
           <div className="flex space-x-4">
             <div className="flex-1">
-              <textarea
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Type your message here..."
-                className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
-                rows={1}
-                style={{ minHeight: '52px', maxHeight: '120px' }}
-                disabled={isStreaming}
-              />
+                             <textarea
+                 ref={inputRef}
+                 value={inputMessage}
+                 onChange={(e) => setInputMessage(e.target.value)}
+                 onKeyPress={handleKeyPress}
+                 placeholder="Type your message here..."
+                 className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
+                 rows={1}
+                 style={{ minHeight: '52px', maxHeight: '120px' }}
+                 disabled={isStreaming}
+               />
             </div>
             <div className="flex flex-col space-y-2">
               <button
