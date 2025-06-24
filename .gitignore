@@ -1,5 +1,18 @@
+.bmad-core/
+.claude/
+.cursor/
+.next/
+.vercel/
+
 # Project Specific
 uv.lock
+sessions/.current-session 
+.current-session
+
+
+
+
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

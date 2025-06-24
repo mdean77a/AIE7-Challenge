@@ -1,6 +1,8 @@
 
 .next/
 .vercel/
+.bmad-core/
+sessions/
 
 .cursor/
 pyproject.toml
