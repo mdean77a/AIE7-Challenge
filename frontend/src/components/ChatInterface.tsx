@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, RotateCcw, Settings, MessageSquare } from 'lucide-react'
+import { Send, RotateCcw, Settings, MessageSquare, FileText } from 'lucide-react'
+import PdfUpload from './PdfUpload'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -20,6 +21,8 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   const [isStreaming, setIsStreaming] = useState(false)
   const [developerMessage, setDeveloperMessage] = useState('You are a helpful AI assistant.')
   const [showSettings, setShowSettings] = useState(false)
+  const [sessionId] = useState(() => `session-${Date.now()}`) // Generate unique session ID
+  const [pdfInfo, setPdfInfo] = useState<{ filename: string; chunks: number } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -36,6 +39,26 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  const handlePdfUploadSuccess = (filename: string, chunks: number) => {
+    setPdfInfo({ filename, chunks })
+    // Add a system message indicating PDF is loaded
+    const systemMessage: Message = {
+      role: 'assistant',
+      content: `📄 PDF "${filename}" loaded successfully! I've indexed ${chunks} chunks from the document. You can now ask me questions about its content.`
+    }
+    setMessages(prev => [...prev, systemMessage])
+  }
+
+  const handleClearPdf = () => {
+    setPdfInfo(null)
+    // Add a system message indicating PDF is cleared
+    const systemMessage: Message = {
+      role: 'assistant',
+      content: '📄 PDF cleared. I\'m now in general chat mode.'
+    }
+    setMessages(prev => [...prev, systemMessage])
+  }
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isStreaming) return
@@ -55,7 +78,7 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
     try {
       abortControllerRef.current = new AbortController()
       
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -64,7 +87,8 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
           developer_message: developerMessage,
           user_message: userMessage,
           api_key: apiKey,
-          model: 'gpt-4.1-nano'
+          model: 'gpt-4o-mini',
+          session_id: sessionId // Include session ID for PDF context
         }),
         signal: abortControllerRef.current.signal
       })
@@ -79,8 +103,6 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
       if (!reader) {
         throw new Error('No reader available')
       }
-
-
 
       while (true) {
         const { done, value } = await reader.read()
@@ -171,7 +193,15 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <MessageSquare className="w-8 h-8 text-primary" />
-            <h1 className="text-xl font-semibold text-text-primary">Streaming Chat</h1>
+            <h1 className="text-xl font-semibold text-text-primary">
+              {pdfInfo ? 'PDF Chat' : 'Streaming Chat'}
+            </h1>
+            {pdfInfo && (
+              <div className="flex items-center gap-2 text-sm text-text-secondary">
+                <FileText className="w-4 h-4" />
+                <span>{pdfInfo.filename}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <button
@@ -197,17 +227,32 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
 
         {/* Settings Panel */}
         {showSettings && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              System Message (Developer Message)
-            </label>
-            <textarea
-              value={developerMessage}
-              onChange={(e) => setDeveloperMessage(e.target.value)}
-              className="w-full px-3 py-2 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
-              rows={3}
-              placeholder="Enter system instructions for the AI..."
-            />
+          <div className="mt-4 space-y-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                System Message (Developer Message)
+              </label>
+              <textarea
+                value={developerMessage}
+                onChange={(e) => setDeveloperMessage(e.target.value)}
+                className="w-full px-3 py-2 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
+                rows={3}
+                placeholder="Enter system instructions for the AI..."
+              />
+            </div>
+            
+            {/* PDF Upload Section */}
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                PDF Document (Optional)
+              </label>
+              <PdfUpload
+                apiKey={apiKey}
+                sessionId={sessionId}
+                onUploadSuccess={handlePdfUploadSuccess}
+                onClearPdf={handleClearPdf}
+              />
+            </div>
           </div>
         )}
       </header>
@@ -219,6 +264,9 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
             <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
             <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
             <p>Type a message below to begin chatting with AI</p>
+            {!pdfInfo && (
+              <p className="text-sm mt-2">Upload a PDF in settings to chat about its content</p>
+            )}
           </div>
         ) : (
           messages.map((message, index) => (
@@ -248,17 +296,17 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
         <div className="max-w-4xl mx-auto">
           <div className="flex space-x-4">
             <div className="flex-1">
-                             <textarea
-                 ref={inputRef}
-                 value={inputMessage}
-                 onChange={(e) => setInputMessage(e.target.value)}
-                 onKeyPress={handleKeyPress}
-                 placeholder="Type your message here..."
-                 className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
-                 rows={1}
-                 style={{ minHeight: '52px', maxHeight: '120px' }}
-                 disabled={isStreaming}
-               />
+              <textarea
+                ref={inputRef}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={pdfInfo ? "Ask a question about the PDF..." : "Type your message here..."}
+                className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
+                rows={1}
+                style={{ minHeight: '52px', maxHeight: '120px' }}
+                disabled={isStreaming}
+              />
             </div>
             <div className="flex flex-col space-y-2">
               <button
@@ -283,4 +331,4 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
       </div>
     </div>
   )
-} 
+}

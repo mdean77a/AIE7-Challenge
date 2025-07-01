@@ -1,5 +1,5 @@
 # Import required FastAPI components for building the API
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 # Import Pydantic for data validation and settings management
@@ -7,10 +7,23 @@ from pydantic import BaseModel
 # Import OpenAI client for interacting with OpenAI's API
 from openai import OpenAI
 import os
-from typing import Optional
+import sys
+from typing import Optional, Dict, List
+import tempfile
+import PyPDF2
+import asyncio
+
+# Add parent directory to path to import aimakerspace
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import aimakerspace components for RAG functionality
+from aimakerspace.vectordatabase import VectorDatabase
+from aimakerspace.text_utils import CharacterTextSplitter
+from aimakerspace.openai_utils.embedding import EmbeddingModel
+from aimakerspace.openai_utils.chatmodel import ChatOpenAI
 
 # Initialize FastAPI application with a title
-app = FastAPI(title="OpenAI Chat API")
+app = FastAPI(title="OpenAI Chat API with RAG")
 
 # Configure CORS (Cross-Origin Resource Sharing) middleware
 # This allows the API to be accessed from different domains/origins
@@ -22,13 +35,90 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers in requests
 )
 
+# Global storage for vector databases per session
+# In production, use proper session management or database
+vector_dbs: Dict[str, VectorDatabase] = {}
+pdf_filenames: Dict[str, str] = {}
+
 # Define the data model for chat requests using Pydantic
 # This ensures incoming request data is properly validated
 class ChatRequest(BaseModel):
     developer_message: str  # Message from the developer/system
     user_message: str      # Message from the user
-    model: Optional[str] = "gpt-4.1-nano"  # Optional model selection with default
+    model: Optional[str] = "gpt-4o-mini"  # Optional model selection with default
     api_key: str          # OpenAI API key for authentication
+    session_id: Optional[str] = "default"  # Session ID for maintaining PDF context
+
+def extract_text_from_pdf(pdf_file) -> str:
+    """Extract text content from uploaded PDF file."""
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    text = ""
+    for page_num in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_num]
+        text += page.extract_text()
+    return text
+
+async def create_rag_system(text: str, api_key: str) -> VectorDatabase:
+    """Create a RAG system from the extracted PDF text."""
+    # Initialize the text splitter with reasonable chunk sizes
+    text_splitter = CharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    
+    # Split the text into chunks
+    chunks = text_splitter.split(text)
+    
+    # Initialize embedding model with the provided API key
+    embedding_model = EmbeddingModel(api_key=api_key)
+    
+    # Create vector database and build from chunks
+    vector_db = VectorDatabase(embedding_model=embedding_model)
+    await vector_db.abuild_from_list(chunks)
+    
+    return vector_db
+
+# Define PDF upload endpoint
+@app.post("/api/upload-pdf")
+async def upload_pdf(
+    file: UploadFile = File(...),
+    api_key: str = Form(...),
+    session_id: str = Form("default")
+):
+    """Handle PDF upload and create vector database for RAG."""
+    try:
+        # Validate file type
+        if not file.filename.endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file.seek(0)
+            
+            # Extract text from PDF
+            text = extract_text_from_pdf(tmp_file)
+            
+        # Remove temporary file
+        os.unlink(tmp_file.name)
+        
+        # Create RAG system
+        vector_db = await create_rag_system(text, api_key)
+        
+        # Store vector database and filename for this session
+        vector_dbs[session_id] = vector_db
+        pdf_filenames[session_id] = file.filename
+        
+        return {
+            "message": "PDF uploaded and indexed successfully",
+            "filename": file.filename,
+            "session_id": session_id,
+            "chunks_created": len(vector_db.vectors)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
 # Define the main chat endpoint that handles POST requests
 @app.post("/api/chat")
@@ -37,15 +127,46 @@ async def chat(request: ChatRequest):
         # Initialize OpenAI client with the provided API key
         client = OpenAI(api_key=request.api_key)
         
+        # Check if we have a vector database for this session
+        has_pdf = request.session_id in vector_dbs
+        
         # Create an async generator function for streaming responses
         async def generate():
+            messages = [
+                {"role": "developer", "content": request.developer_message},
+            ]
+            
+            # If we have a PDF indexed, use RAG to enhance the response
+            if has_pdf:
+                vector_db = vector_dbs[request.session_id]
+                
+                # Search for relevant context from the PDF
+                relevant_chunks = vector_db.search_by_text(
+                    request.user_message,
+                    k=3,  # Return top 3 most relevant chunks
+                    return_as_text=True
+                )
+                
+                # Create context from relevant chunks
+                context = "\n\n".join(relevant_chunks)
+                
+                # Create enhanced user message with context
+                enhanced_message = f"""Context from PDF '{pdf_filenames[request.session_id]}':
+{context}
+
+User Question: {request.user_message}
+
+Please answer the user's question based on the provided context from the PDF. If the context doesn't contain relevant information, let the user know."""
+                
+                messages.append({"role": "user", "content": enhanced_message})
+            else:
+                # No PDF context, use original message
+                messages.append({"role": "user", "content": request.user_message})
+            
             # Create a streaming chat completion request
             stream = client.chat.completions.create(
                 model=request.model,
-                messages=[
-                    {"role": "developer", "content": request.developer_message},
-                    {"role": "user", "content": request.user_message}
-                ],
+                messages=messages,
                 stream=True  # Enable streaming response
             )
             
@@ -69,10 +190,32 @@ async def chat(request: ChatRequest):
         # Handle any errors that occur during processing
         raise HTTPException(status_code=500, detail=str(e))
 
+# Endpoint to check if a PDF is loaded for a session
+@app.get("/api/pdf-status/{session_id}")
+async def pdf_status(session_id: str):
+    """Check if a PDF is loaded for the given session."""
+    has_pdf = session_id in vector_dbs
+    return {
+        "has_pdf": has_pdf,
+        "filename": pdf_filenames.get(session_id, None),
+        "chunks": len(vector_dbs[session_id].vectors) if has_pdf else 0
+    }
+
+# Endpoint to clear PDF from a session
+@app.delete("/api/clear-pdf/{session_id}")
+async def clear_pdf(session_id: str):
+    """Clear the PDF vector database for a session."""
+    if session_id in vector_dbs:
+        del vector_dbs[session_id]
+        del pdf_filenames[session_id]
+        return {"message": "PDF cleared successfully"}
+    else:
+        raise HTTPException(status_code=404, detail="No PDF found for this session")
+
 # Define a health check endpoint to verify API status
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "features": ["chat", "pdf-upload", "rag"]}
 
 # Entry point for running the application directly
 if __name__ == "__main__":
