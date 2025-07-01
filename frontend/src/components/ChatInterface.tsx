@@ -43,6 +43,13 @@ export default function ChatInterface() {
     }
   }, [isStreaming])
 
+  // Focus input when API key is entered (enables the input)
+  useEffect(() => {
+    if (apiKey && inputRef.current && !isStreaming) {
+      inputRef.current.focus()
+    }
+  }, [apiKey])
+
 
   const handlePdfUploadSuccess = (filename: string, chunks: number) => {
     setPdfInfo({ filename, chunks })
