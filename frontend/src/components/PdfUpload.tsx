@@ -6,11 +6,13 @@ import { Upload, FileText, X, Loader2 } from 'lucide-react'
 interface PdfUploadProps {
   apiKey: string
   sessionId: string
+  chunkSize: number
+  chunkOverlap: number
   onUploadSuccess: (filename: string, chunks: number) => void
   onClearPdf: () => void
 }
 
-export default function PdfUpload({ apiKey, sessionId, onUploadSuccess, onClearPdf }: PdfUploadProps) {
+export default function PdfUpload({ apiKey, sessionId, chunkSize, chunkOverlap, onUploadSuccess, onClearPdf }: PdfUploadProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [pdfName, setPdfName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -33,6 +35,8 @@ export default function PdfUpload({ apiKey, sessionId, onUploadSuccess, onClearP
     formData.append('file', file)
     formData.append('api_key', apiKey)
     formData.append('session_id', sessionId)
+    formData.append('chunk_size', chunkSize.toString())
+    formData.append('chunk_overlap', chunkOverlap.toString())
 
     try {
       const response = await fetch('/api/upload-pdf', {

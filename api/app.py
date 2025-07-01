@@ -80,6 +80,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = "gpt-4o-mini"  # Optional model selection with default
     api_key: str          # OpenAI API key for authentication
     session_id: Optional[str] = "default"  # Session ID for maintaining PDF context
+    num_chunks_to_retrieve: Optional[int] = 3  # Number of chunks to retrieve for context
 
 def extract_text_from_pdf(pdf_file) -> str:
     """Extract text content from uploaded PDF file."""
@@ -90,12 +91,12 @@ def extract_text_from_pdf(pdf_file) -> str:
         text += page.extract_text()
     return text
 
-async def create_rag_system(text: str, api_key: str) -> VectorDatabase:
+async def create_rag_system(text: str, api_key: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> VectorDatabase:
     """Create a RAG system from the extracted PDF text."""
-    # Initialize the text splitter with reasonable chunk sizes
+    # Initialize the text splitter with user-provided chunk sizes
     text_splitter = CharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
     )
     
     # Split the text into chunks
@@ -115,7 +116,9 @@ async def create_rag_system(text: str, api_key: str) -> VectorDatabase:
 async def upload_pdf(
     file: UploadFile = File(...),
     api_key: str = Form(...),
-    session_id: str = Form("default")
+    session_id: str = Form("default"),
+    chunk_size: int = Form(1000),
+    chunk_overlap: int = Form(200)
 ):
     """Handle PDF upload and create vector database for RAG."""
     try:
@@ -135,8 +138,8 @@ async def upload_pdf(
         # Remove temporary file
         os.unlink(tmp_file.name)
         
-        # Create RAG system
-        vector_db = await create_rag_system(text, api_key)
+        # Create RAG system with user-provided chunk settings
+        vector_db = await create_rag_system(text, api_key, chunk_size, chunk_overlap)
         
         # Store vector database and filename for this session
         vector_dbs[session_id] = vector_db
@@ -175,7 +178,7 @@ async def chat(request: ChatRequest):
                 # Search for relevant context from the PDF
                 relevant_chunks = vector_db.search_by_text(
                     request.user_message,
-                    k=3,  # Return top 3 most relevant chunks
+                    k=request.num_chunks_to_retrieve,  # Use user-specified number of chunks
                     return_as_text=True
                 )
                 
