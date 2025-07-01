@@ -80,7 +80,7 @@ export default function PdfUpload({ apiKey, sessionId, onUploadSuccess, onClearP
             type="file"
             accept=".pdf"
             onChange={handleFileUpload}
-            disabled={isUploading}
+            disabled={isUploading || !apiKey}
             className="hidden"
             id="pdf-upload"
           />
@@ -88,14 +88,21 @@ export default function PdfUpload({ apiKey, sessionId, onUploadSuccess, onClearP
             htmlFor="pdf-upload"
             className={`
               flex items-center justify-center gap-3 w-full p-4 border-2 border-dashed 
-              rounded-lg cursor-pointer transition-all
-              ${isUploading 
-                ? 'border-gray-300 bg-gray-50 cursor-not-allowed' 
-                : 'border-primary/30 hover:border-primary hover:bg-primary/5'
+              rounded-lg transition-all
+              ${!apiKey
+                ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                : isUploading 
+                  ? 'border-gray-300 bg-gray-50 cursor-not-allowed' 
+                  : 'border-primary/30 hover:border-primary hover:bg-primary/5 cursor-pointer'
               }
             `}
           >
-            {isUploading ? (
+            {!apiKey ? (
+              <>
+                <Upload className="w-5 h-5 text-gray-400" />
+                <span className="text-gray-400">API key required</span>
+              </>
+            ) : isUploading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin text-primary" />
                 <span className="text-text-secondary">Uploading and indexing PDF...</span>

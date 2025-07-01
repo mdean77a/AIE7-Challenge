@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, RotateCcw, Settings, MessageSquare, FileText } from 'lucide-react'
+import { Send, RotateCcw, Settings, MessageSquare, FileText, Key, Eye, EyeOff } from 'lucide-react'
 import PdfUpload from './PdfUpload'
 
 interface Message {
@@ -10,12 +10,9 @@ interface Message {
   isStreaming?: boolean
 }
 
-interface ChatInterfaceProps {
-  apiKey: string
-  onApiKeyReset: () => void
-}
-
-export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfaceProps) {
+export default function ChatInterface() {
+  const [apiKey, setApiKey] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -34,11 +31,6 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   useEffect(() => {
     scrollToBottom()
   }, [messages])
-
-  // Focus input when component mounts (when user enters chat interface)
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   const handlePdfUploadSuccess = (filename: string, chunks: number) => {
     setPdfInfo({ filename, chunks })
@@ -61,7 +53,7 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
   }
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isStreaming) return
+    if (!inputMessage.trim() || isStreaming || !apiKey) return
 
     const userMessage = inputMessage.trim()
     setInputMessage('')
@@ -190,45 +182,90 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
     <div className="flex flex-col h-screen bg-white">
       {/* Header */}
       <header className="bg-white border-b border-border-light px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <MessageSquare className="w-8 h-8 text-primary" />
-            <h1 className="text-xl font-semibold text-text-primary">
-              {pdfInfo ? 'PDF Chat' : 'Streaming Chat'}
-            </h1>
-            {pdfInfo && (
-              <div className="flex items-center gap-2 text-sm text-text-secondary">
-                <FileText className="w-4 h-4" />
-                <span>{pdfInfo.filename}</span>
-              </div>
-            )}
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <MessageSquare className="w-8 h-8 text-primary" />
+              <h1 className="text-xl font-semibold text-text-primary">
+                {pdfInfo ? 'PDF Chat' : 'AI Chat with RAG'}
+              </h1>
+              {pdfInfo && (
+                <div className="flex items-center gap-2 text-sm text-text-secondary">
+                  <FileText className="w-4 h-4" />
+                  <span>{pdfInfo.filename}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+              <button
+                onClick={handleClearChat}
+                className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleClearChat}
-              className="p-2 text-text-secondary hover:text-text-primary hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onApiKeyReset}
-              className="px-3 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-light hover:border-gray-300 rounded-lg transition-colors"
-            >
-              Change API Key
-            </button>
-          </div>
-        </div>
 
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="mt-4 space-y-4">
+          {/* Main Setup Area - Always Visible */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* API Key Input */}
             <div className="p-4 bg-gray-50 rounded-lg">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                <Key className="w-4 h-4 inline mr-1" />
+                OpenAI API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-4 py-2 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  {showApiKey ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              {!apiKey && (
+                <p className="mt-1 text-xs text-amber-600">API key required to start chatting</p>
+              )}
+            </div>
+
+            {/* PDF Upload Section */}
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                <FileText className="w-4 h-4 inline mr-1" />
+                PDF Document (Optional)
+              </label>
+              <PdfUpload
+                apiKey={apiKey}
+                sessionId={sessionId}
+                onUploadSuccess={handlePdfUploadSuccess}
+                onClearPdf={handleClearPdf}
+              />
+              {!apiKey && (
+                <p className="mt-1 text-xs text-amber-600">Enter API key first to upload PDF</p>
+              )}
+            </div>
+          </div>
+
+          {/* Settings Panel - Collapsible */}
+          {showSettings && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
               <label className="block text-sm font-medium text-text-primary mb-2">
                 System Message (Developer Message)
               </label>
@@ -240,59 +277,51 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
                 placeholder="Enter system instructions for the AI..."
               />
             </div>
-            
-            {/* PDF Upload Section */}
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <label className="block text-sm font-medium text-text-primary mb-2">
-                PDF Document (Optional)
-              </label>
-              <PdfUpload
-                apiKey={apiKey}
-                sessionId={sessionId}
-                onUploadSuccess={handlePdfUploadSuccess}
-                onClearPdf={handleClearPdf}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {messages.length === 0 ? (
-          <div className="text-center text-text-secondary mt-20">
-            <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
-            <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
-            <p>Type a message below to begin chatting with AI</p>
-            {!pdfInfo && (
-              <p className="text-sm mt-2">Upload a PDF in settings to chat about its content</p>
-            )}
-          </div>
-        ) : (
-          messages.map((message, index) => (
-            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-3xl px-4 py-3 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-primary text-white'
-                    : 'bg-gray-100 text-text-primary'
-                }`}
-              >
-                <div className="message-content whitespace-pre-wrap">
-                  {message.content}
-                  {message.isStreaming && (
-                    <span className="streaming-cursor ml-1"></span>
-                  )}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {messages.length === 0 ? (
+            <div className="text-center text-text-secondary mt-20">
+              <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <h3 className="text-lg font-medium mb-2">Ready to chat!</h3>
+              <p>Enter your OpenAI API key above to start</p>
+              {apiKey && !pdfInfo && (
+                <p className="text-sm mt-2">Upload a PDF to chat about its content, or just start typing</p>
+              )}
+              {apiKey && pdfInfo && (
+                <p className="text-sm mt-2 text-primary">PDF loaded! Ask me anything about it</p>
+              )}
+            </div>
+          ) : (
+            messages.map((message, index) => (
+              <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-3xl px-4 py-3 rounded-lg ${
+                    message.role === 'user'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 text-text-primary'
+                  }`}
+                >
+                  <div className="message-content whitespace-pre-wrap">
+                    {message.content}
+                    {message.isStreaming && (
+                      <span className="streaming-cursor ml-1"></span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}
-      <div className="input-container">
+      <div className="border-t border-border-light bg-white px-6 py-4">
         <div className="max-w-4xl mx-auto">
           <div className="flex space-x-4">
             <div className="flex-1">
@@ -301,17 +330,23 @@ export default function ChatInterface({ apiKey, onApiKeyReset }: ChatInterfacePr
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={pdfInfo ? "Ask a question about the PDF..." : "Type your message here..."}
-                className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none"
+                placeholder={
+                  !apiKey 
+                    ? "Enter your API key above to start chatting..." 
+                    : pdfInfo 
+                      ? "Ask a question about the PDF..." 
+                      : "Type your message here..."
+                }
+                className="w-full px-4 py-3 border border-border-light rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-none disabled:bg-gray-50 disabled:text-gray-400"
                 rows={1}
                 style={{ minHeight: '52px', maxHeight: '120px' }}
-                disabled={isStreaming}
+                disabled={isStreaming || !apiKey}
               />
             </div>
             <div className="flex flex-col space-y-2">
               <button
                 onClick={handleSendMessage}
-                disabled={!inputMessage.trim() || isStreaming}
+                disabled={!inputMessage.trim() || isStreaming || !apiKey}
                 className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
               >
                 <Send className="w-4 h-4" />
