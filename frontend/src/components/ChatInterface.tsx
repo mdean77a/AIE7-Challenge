@@ -36,12 +36,12 @@ export default function ChatInterface() {
     scrollToBottom()
   }, [messages])
 
-  // Focus input when it becomes available (not streaming and has API key)
+  // Focus input when generation finishes
   useEffect(() => {
-    if (!isStreaming && apiKey && inputRef.current) {
+    if (!isStreaming && inputRef.current) {
       inputRef.current.focus()
     }
-  }, [isStreaming, apiKey])
+  }, [isStreaming])
 
 
   const handlePdfUploadSuccess = (filename: string, chunks: number) => {
