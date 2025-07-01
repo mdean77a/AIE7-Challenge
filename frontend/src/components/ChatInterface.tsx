@@ -172,8 +172,16 @@ export default function ChatInterface() {
     }
   }
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
     setMessages([])
+    // Clear conversation history on the backend
+    try {
+      await fetch(`/api/clear-conversation/${sessionId}`, {
+        method: 'DELETE',
+      })
+    } catch (error) {
+      console.error('Failed to clear conversation history:', error)
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

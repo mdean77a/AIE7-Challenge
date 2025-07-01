@@ -67,10 +67,11 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers in requests
 )
 
-# Global storage for vector databases per session
+# Global storage for vector databases and conversation history per session
 # In production, use proper session management or database
 vector_dbs: Dict[str, VectorDatabase] = {}
 pdf_filenames: Dict[str, str] = {}
+conversation_histories: Dict[str, List[Dict[str, str]]] = {}  # Store conversation history per session
 
 # Define the data model for chat requests using Pydantic
 # This ensures incoming request data is properly validated
@@ -90,6 +91,34 @@ def extract_text_from_pdf(pdf_file) -> str:
         page = pdf_reader.pages[page_num]
         text += page.extract_text()
     return text
+
+def manage_conversation_history(session_id: str, user_message: str, assistant_response: str, max_history_tokens: int = 8000):
+    """Manage conversation history per session with token limits."""
+    if session_id not in conversation_histories:
+        conversation_histories[session_id] = []
+    
+    # Add the new conversation turn
+    conversation_histories[session_id].append({
+        "role": "user",
+        "content": user_message
+    })
+    conversation_histories[session_id].append({
+        "role": "assistant", 
+        "content": assistant_response
+    })
+    
+    # Simple token estimation (roughly 4 characters per token)
+    def estimate_tokens(messages):
+        return sum(len(msg["content"]) for msg in messages) // 4
+    
+    # Trim history if it gets too long (keep recent messages)
+    while len(conversation_histories[session_id]) > 2 and estimate_tokens(conversation_histories[session_id]) > max_history_tokens:
+        # Remove the oldest user-assistant pair (but keep at least the most recent exchange)
+        conversation_histories[session_id] = conversation_histories[session_id][2:]
+
+def get_conversation_context(session_id: str) -> List[Dict[str, str]]:
+    """Get conversation history for a session."""
+    return conversation_histories.get(session_id, [])
 
 async def create_rag_system(text: str, api_key: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> VectorDatabase:
     """Create a RAG system from the extracted PDF text."""
@@ -165,11 +194,19 @@ async def chat(request: ChatRequest):
         # Check if we have a vector database for this session
         has_pdf = request.session_id in vector_dbs
         
+        # Store the complete assistant response for conversation history
+        assistant_response = ""
+        
         # Create an async generator function for streaming responses
         async def generate():
+            nonlocal assistant_response
             messages = [
                 {"role": "developer", "content": request.developer_message},
             ]
+            
+            # Add conversation history to maintain context
+            conversation_context = get_conversation_context(request.session_id)
+            messages.extend(conversation_context)
             
             # If we have a PDF indexed, use RAG to enhance the response
             if has_pdf:
@@ -208,11 +245,21 @@ Please answer the user's question based on the provided context from the PDF. If
             # Yield each chunk of the response as it becomes available
             for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+                    content = chunk.choices[0].delta.content
+                    assistant_response += content  # Accumulate the response
+                    yield content
+
+        # Create a generator wrapper to save conversation history after streaming
+        async def generate_and_save():
+            async for chunk in generate():
+                yield chunk
+            # Save conversation history after streaming is complete
+            if assistant_response.strip():  # Only save if we got a response
+                manage_conversation_history(request.session_id, request.user_message, assistant_response)
 
         # Return a streaming response to the client with proper headers
         return StreamingResponse(
-            generate(), 
+            generate_and_save(), 
             media_type="text/plain",
             headers={
                 "Cache-Control": "no-cache",
@@ -247,10 +294,20 @@ async def clear_pdf(session_id: str):
     else:
         raise HTTPException(status_code=404, detail="No PDF found for this session")
 
+# Endpoint to clear conversation history from a session
+@app.delete("/api/clear-conversation/{session_id}")
+async def clear_conversation(session_id: str):
+    """Clear the conversation history for a session."""
+    if session_id in conversation_histories:
+        del conversation_histories[session_id]
+        return {"message": "Conversation history cleared successfully"}
+    else:
+        return {"message": "No conversation history found for this session"}
+
 # Define a health check endpoint to verify API status
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "features": ["chat", "pdf-upload", "rag"]}
+    return {"status": "ok", "features": ["chat", "pdf-upload", "rag", "conversation-memory"]}
 
 # Entry point for running the application directly
 if __name__ == "__main__":
