@@ -5,13 +5,14 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import Pydantic for data validation and settings management
 from pydantic import BaseModel
 # Import OpenAI client for interacting with OpenAI's API
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 import os
 import sys
 from typing import Optional, Dict, List
 import tempfile
 import PyPDF2
 import asyncio
+import numpy as np
 
 # Add parent directory to path to import aimakerspace
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,8 +20,39 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import aimakerspace components for RAG functionality
 from aimakerspace.vectordatabase import VectorDatabase
 from aimakerspace.text_utils import CharacterTextSplitter
-from aimakerspace.openai_utils.embedding import EmbeddingModel
-from aimakerspace.openai_utils.chatmodel import ChatOpenAI
+
+# Custom EmbeddingModel that accepts API key as parameter
+class CustomEmbeddingModel:
+    """Custom embedding model that accepts API key as a parameter instead of reading from env."""
+    def __init__(self, api_key: str, embeddings_model_name: str = "text-embedding-3-small"):
+        self.api_key = api_key
+        self.async_client = AsyncOpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key)
+        self.embeddings_model_name = embeddings_model_name
+
+    async def async_get_embeddings(self, list_of_text: List[str]) -> List[List[float]]:
+        """Get embeddings for a list of texts asynchronously."""
+        batch_size = 1024
+        batches = [list_of_text[i:i + batch_size] for i in range(0, len(list_of_text), batch_size)]
+        
+        async def process_batch(batch):
+            embedding_response = await self.async_client.embeddings.create(
+                input=batch, model=self.embeddings_model_name
+            )
+            return [embeddings.embedding for embeddings in embedding_response.data]
+        
+        # Use asyncio.gather to process all batches concurrently
+        results = await asyncio.gather(*[process_batch(batch) for batch in batches])
+        
+        # Flatten the results
+        return [embedding for batch_result in results for embedding in batch_result]
+
+    def get_embedding(self, text: str) -> List[float]:
+        """Get embedding for a single text."""
+        embedding = self.client.embeddings.create(
+            input=text, model=self.embeddings_model_name
+        )
+        return embedding.data[0].embedding
 
 # Initialize FastAPI application with a title
 app = FastAPI(title="OpenAI Chat API with RAG")
@@ -69,8 +101,8 @@ async def create_rag_system(text: str, api_key: str) -> VectorDatabase:
     # Split the text into chunks
     chunks = text_splitter.split(text)
     
-    # Initialize embedding model with the provided API key
-    embedding_model = EmbeddingModel(api_key=api_key)
+    # Initialize custom embedding model with the provided API key
+    embedding_model = CustomEmbeddingModel(api_key=api_key)
     
     # Create vector database and build from chunks
     vector_db = VectorDatabase(embedding_model=embedding_model)
