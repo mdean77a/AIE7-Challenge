@@ -36,17 +36,6 @@ export default function ChatInterface() {
     scrollToBottom()
   }, [messages])
 
-  // Additional effect to ensure focus after streaming completes
-  useEffect(() => {
-    if (!isStreaming && inputRef.current) {
-      const timer = setTimeout(() => {
-        if (inputRef.current && !isStreaming) {
-          inputRef.current.focus()
-        }
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-  }, [isStreaming])
 
   const handlePdfUploadSuccess = (filename: string, chunks: number) => {
     setPdfInfo({ filename, chunks })
@@ -143,12 +132,11 @@ export default function ChatInterface() {
       )
 
       // Return focus to input after streaming completes
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus()
-          inputRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
         }
-      })
+      }, 100)
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -174,15 +162,12 @@ export default function ChatInterface() {
       setIsStreaming(false)
       abortControllerRef.current = null
       
-      // Always return focus to input when streaming ends
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (inputRef.current) {
-            inputRef.current.focus()
-            inputRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-          }
-        })
-      })
+      // Always return focus to input when streaming ends  
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+        }
+      }, 100)
     }
   }
 
@@ -211,12 +196,6 @@ export default function ChatInterface() {
     }
   }
 
-  const handleInputClick = () => {
-    // Ensure focus when user clicks on input area
-    if (inputRef.current) {
-      inputRef.current.focus()
-    }
-  }
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -435,13 +414,6 @@ export default function ChatInterface() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                onClick={handleInputClick}
-                onFocus={() => {
-                  // Ensure textarea stays focused in production
-                  if (inputRef.current) {
-                    inputRef.current.focus()
-                  }
-                }}
                 placeholder={
                   !apiKey 
                     ? "Enter your API key above to start chatting..." 
@@ -453,7 +425,6 @@ export default function ChatInterface() {
                 rows={1}
                 style={{ minHeight: '52px', maxHeight: '120px' }}
                 disabled={isStreaming || !apiKey}
-                autoFocus={!isStreaming && apiKey ? true : false}
               />
             </div>
             <div className="flex flex-col space-y-2">
