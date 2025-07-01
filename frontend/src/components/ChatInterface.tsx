@@ -36,6 +36,13 @@ export default function ChatInterface() {
     scrollToBottom()
   }, [messages])
 
+  // Focus input when it becomes available (not streaming and has API key)
+  useEffect(() => {
+    if (!isStreaming && apiKey && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [isStreaming, apiKey])
+
 
   const handlePdfUploadSuccess = (filename: string, chunks: number) => {
     setPdfInfo({ filename, chunks })
@@ -132,11 +139,7 @@ export default function ChatInterface() {
       )
 
       // Return focus to input after streaming completes
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus()
-        }
-      }, 100)
+      inputRef.current?.focus()
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -162,12 +165,8 @@ export default function ChatInterface() {
       setIsStreaming(false)
       abortControllerRef.current = null
       
-      // Always return focus to input when streaming ends  
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus()
-        }
-      }, 100)
+      // Always return focus to input when streaming ends
+      inputRef.current?.focus()
     }
   }
 
@@ -425,6 +424,8 @@ export default function ChatInterface() {
                 rows={1}
                 style={{ minHeight: '52px', maxHeight: '120px' }}
                 disabled={isStreaming || !apiKey}
+                tabIndex={0}
+                autoFocus
               />
             </div>
             <div className="flex flex-col space-y-2">
